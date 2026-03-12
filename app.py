@@ -7,6 +7,10 @@ def list_students():
     total_passed = len(passed)
     total_failed = len(failed)
 
+    # Avoid division by zero
+    percent_passed = (total_passed / total_students * 100) if total_students else 0
+    percent_failed = (total_failed / total_students * 100) if total_students else 0
+
     html = """
     <!DOCTYPE html>
     <html>
@@ -33,6 +37,7 @@ def list_students():
                     <div class="card-body text-center">
                         <h5 class="card-title">Passed</h5>
                         <p class="display-6">{{total_passed}}</p>
+                        <small>{{percent_passed|round(1)}}%</small>
                     </div>
                 </div>
             </div>
@@ -41,6 +46,7 @@ def list_students():
                     <div class="card-body text-center">
                         <h5 class="card-title">Failed</h5>
                         <p class="display-6">{{total_failed}}</p>
+                        <small>{{percent_failed|round(1)}}%</small>
                     </div>
                 </div>
             </div>
@@ -90,9 +96,13 @@ def list_students():
     </body>
     </html>
     """
-    return render_template_string(html,
-                                  passed=passed,
-                                  failed=failed,
-                                  total_students=total_students,
-                                  total_passed=total_passed,
-                                  total_failed=total_failed)
+    return render_template_string(
+        html,
+        passed=passed,
+        failed=failed,
+        total_students=total_students,
+        total_passed=total_passed,
+        total_failed=total_failed,
+        percent_passed=percent_passed,
+        percent_failed=percent_failed
+    )
