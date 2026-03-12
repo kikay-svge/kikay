@@ -9,13 +9,18 @@ students = [
     {"id": 3, "name": "Pedro", "grade": 70, "section": "Zion"}
 ]
 
+PASSING_GRADE = 75  # threshold for pass/fail
+
 @app.route('/')
 def home():
     return redirect(url_for('list_students'))
 
-# Show all students
+# Show all students with Passed/Failed tables
 @app.route('/students')
 def list_students():
+    passed = [s for s in students if s["grade"] >= PASSING_GRADE]
+    failed = [s for s in students if s["grade"] < PASSING_GRADE]
+
     html = """
     <!DOCTYPE html>
     <html>
@@ -25,36 +30,53 @@ def list_students():
               href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     </head>
     <body class="container mt-4">
-        <h2 class="mb-4">📚 Student List</h2>
+        <h2 class="mb-4">📚 Student Dashboard</h2>
+
+        <h3 class="text-success">✅ Passed Students</h3>
         <table class="table table-striped table-hover">
-            <thead class="table-dark">
+            <thead class="table-success">
                 <tr>
-                    <th>ID</th>
-                    <th>Name</th>
-                    <th>Grade</th>
-                    <th>Section</th>
-                    <th>Actions</th>
+                    <th>ID</th><th>Name</th><th>Grade</th><th>Section</th><th>Actions</th>
                 </tr>
             </thead>
             <tbody>
-            {% for s in students %}
+            {% for s in passed %}
                 <tr>
                     <td>{{s.id}}</td>
                     <td>{{s.name}}</td>
                     <td>{{s.grade}}</td>
                     <td>{{s.section}}</td>
-                    <td>
-                        <a href="/edit_student/{{s.id}}" class="btn btn-sm btn-primary">✏️ Edit</a>
-                    </td>
+                    <td><a href="/edit_student/{{s.id}}" class="btn btn-sm btn-primary">✏️ Edit</a></td>
                 </tr>
             {% endfor %}
             </tbody>
         </table>
-        <a href="/add_student_form" class="btn btn-success">➕ Add New Student</a>
+
+        <h3 class="text-danger mt-5">❌ Failed Students</h3>
+        <table class="table table-striped table-hover">
+            <thead class="table-danger">
+                <tr>
+                    <th>ID</th><th>Name</th><th>Grade</th><th>Section</th><th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for s in failed %}
+                <tr>
+                    <td>{{s.id}}</td>
+                    <td>{{s.name}}</td>
+                    <td>{{s.grade}}</td>
+                    <td>{{s.section}}</td>
+                    <td><a href="/edit_student/{{s.id}}" class="btn btn-sm btn-primary">✏️ Edit</a></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+
+        <a href="/add_student_form" class="btn btn-success mt-3">➕ Add New Student</a>
     </body>
     </html>
     """
-    return render_template_string(html, students=students)
+    return render_template_string(html, passed=passed, failed=failed)
 
 # Add student form
 @app.route('/add_student_form')
