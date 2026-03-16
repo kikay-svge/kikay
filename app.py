@@ -18,208 +18,143 @@ def home():
 
 @app.route('/students')
 def list_students():
-    # --- Data Calculations ---
     total_students = len(students)
     if total_students == 0:
         return "No students found. <a href='/add_student_form'>Add one</a>"
 
+    # Basic Counts
     passed_list = [s for s in students if s["grade"] >= PASSING_GRADE]
     total_passed = len(passed_list)
+    total_failed = total_students - total_passed
+    
+    # Percentages and Averages
+    percent_passed = (total_passed / total_students * 100)
     avg_grade = sum(s["grade"] for s in students) / total_students
-    top_scorer = max(students, key=lambda x: x['grade'])
 
-    # --- Data for JavaScript Chart ---
-    chart_labels = [s["name"] for s in students]
-    chart_values = [s["grade"] for s in students]
+    # Performance Tiers
+    top_performers = sum(1 for s in students if s["grade"] >= 90)
+    needs_help = total_failed
+
+    # Section-based Analytics
+    sections = {}
+    for s in students:
+        sec = s["section"]
+        if sec not in sections:
+            sections[sec] = {"count": 0, "total_grade": 0}
+        sections[sec]["count"] += 1
+        sections[sec]["total_grade"] += s["grade"]
+    
+    for sec in sections:
+        sections[sec]["avg"] = sections[sec]["total_grade"] / sections[sec]["count"]
 
     html = """
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Student Insights Pro</title>
+        <title>Student Dashboard Pro</title>
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-        <style>
-            .card { border: none; border-radius: 12px; transition: transform 0.2s; }
-            .card:hover { transform: translateY(-5px); }
-            .metric-val { font-weight: bold; font-size: 1.8rem; }
-        </style>
     </head>
-    <body class="bg-light">
-        <div class="container py-4">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h2>🎓 Academic Dashboard</h2>
-                <a href="/add_student_form" class="btn btn-primary shadow-sm">+ New Student</a>
-            </div>
+    <body class="container mt-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>📊 Student Analytics Dashboard</h2>
+            <a href="/add_student_form" class="btn btn-success">➕ Add New Student</a>
+        </div>
 
-            <div class="row g-3 mb-4">
-                <div class="col-md-3">
-                    <div class="card shadow-sm text-center p-3 text-white bg-dark">
-                        <small class="text-light opacity-75">Enrollment</small>
-                        <div class="metric-val">{{total_students}}</div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="card shadow-sm text-center p-3">
-                        <small class="text-muted">Class Average</small>
-                        <div class="metric-val text-primary">{{avg_grade|round(1)}}</div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="card shadow-sm text-center p-3">
-                        <small class="text-muted">Pass Rate</small>
-                        <div class="metric-val text-success">{{((total_passed/total_students)*100)|round(0)}}%</div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="card shadow-sm text-center p-3 border-start border-info border-4">
-                        <small class="text-muted">Top Performer</small>
-                        <div class="metric-val text-info" style="font-size: 1.2rem; padding-top: 10px;">{{top_scorer.name}}</div>
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card text-white bg-primary h-100">
+                    <div class="card-body text-center">
+                        <h6>Total Students</h6>
+                        <h2 class="display-6">{{total_students}}</h2>
                     </div>
                 </div>
             </div>
-
-            <div class="row">
-                <div class="col-lg-6 mb-4">
-                    <div class="card shadow-sm p-4 h-100">
-                        <h5 class="mb-3">Grade Distribution</h5>
-                        <div class="chart-container" style="position: relative; height:300px;">
-                            <canvas id="gradeChart"></canvas>
-                        </div>
+            <div class="col-md-3">
+                <div class="card text-white bg-info h-100">
+                    <div class="card-body text-center">
+                        <h6>Class Average</h6>
+                        <h2 class="display-6">{{avg_grade|round(1)}}</h2>
                     </div>
                 </div>
-
-                <div class="col-lg-6 mb-4">
-                    <div class="card shadow-sm p-4 h-100">
-                        <h5 class="mb-3">Student Roster</h5>
-                        <div class="table-responsive">
-                            <table class="table align-middle">
-                                <thead class="table-light">
-                                    <tr><th>Name</th><th>Grade Progress</th><th class="text-end">Actions</th></tr>
-                                </thead>
-                                <tbody>
-                                {% for s in students %}
-                                    <tr>
-                                        <td><strong>{{s.name}}</strong><br><small class="text-muted">{{s.section}}</small></td>
-                                        <td style="min-width: 150px;">
-                                            <div class="progress" style="height: 10px;">
-                                                <div class="progress-bar {{ 'bg-success' if s.grade >= PASSING_GRADE else 'bg-danger' }}"  
-                                                     style="width: {{s.grade}}%"></div>
-                                            </div>
-                                            <small>{{s.grade}}%</small>
-                                        </td>
-                                        <td class="text-end">
-                                            <a href="/edit_student/{{s.id}}" class="btn btn-sm btn-outline-secondary border-0">Edit</a>
-                                            <form action="/delete_student/{{s.id}}" method="POST" style="display:inline;">
-                                                <button class="btn btn-sm btn-outline-danger border-0">Delete</button>
-                                            </form>
-                                        </td>
-                                    </tr>
-                                {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-white bg-success h-100">
+                    <div class="card-body text-center">
+                        <h6>Passing Rate</h6>
+                        <h2 class="display-6">{{percent_passed|round(1)}}%</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-white bg-warning h-100">
+                    <div class="card-body text-center">
+                        <h6>Top Performers (90+)</h6>
+                        <h2 class="display-6">{{top_performers}}</h2>
                     </div>
                 </div>
             </div>
         </div>
 
-        <script>
-            new Chart(document.getElementById('gradeChart'), {
-                type: 'bar',
-                data: {
-                    labels: {{ chart_labels|safe }},
-                    datasets: [{
-                        label: 'Grade Score',
-                        data: {{ chart_values|safe }},
-                        backgroundColor: '#0d6efd88',
-                        borderColor: '#0d6efd',
-                        borderWidth: 1,
-                        borderRadius: 5
-                    }]
-                },
-                options: { 
-                    maintainAspectRatio: false,
-                    scales: { y: { beginAtZero: true, max: 100 } } 
-                }
-            });
-        </script>
+        <div class="row">
+            <div class="col-md-5">
+                <h4>Section Performance</h4>
+                <table class="table table-bordered table-sm mt-3">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Section</th>
+                            <th>Students</th>
+                            <th>Avg Grade</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for sec_name, data in sections.items() %}
+                        <tr>
+                            <td>{{sec_name}}</td>
+                            <td>{{data.count}}</td>
+                            <td><strong>{{data.avg|round(1)}}</strong></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="col-md-7">
+                <h4>Student List</h4>
+                <table class="table table-hover mt-3">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Name</th><th>Grade</th><th>Section</th><th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for s in students %}
+                        <tr class="{{ 'table-success' if s.grade >= PASSING_GRADE else 'table-danger' }}">
+                            <td>{{s.name}}</td>
+                            <td>{{s.grade}}</td>
+                            <td>{{s.section}}</td>
+                            <td>
+                                <a href="/edit_student/{{s.id}}" class="btn btn-sm btn-outline-dark">✏️</a>
+                                <form action="/delete_student/{{s.id}}" method="POST" style="display:inline;">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">🗑️</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </body>
     </html>
     """
     return render_template_string(
-        html, students=students, total_students=total_students,
-        total_passed=total_passed, avg_grade=avg_grade,  
-        top_scorer=top_scorer, chart_labels=chart_labels, 
-        chart_values=chart_values, PASSING_GRADE=PASSING_GRADE
+        html, 
+        students=students, 
+        total_students=total_students,
+        total_passed=total_passed,
+        percent_passed=percent_passed,
+        avg_grade=avg_grade,
+        top_performers=top_performers,
+        sections=sections,
+        PASSING_GRADE=PASSING_GRADE
     )
-
-# --- Standard Form Routes ---
-
-@app.route('/add_student_form')
-def add_student_form():
-    html = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Add Student</title>
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    </head>
-    <body class="container mt-5">
-        <div class="col-md-6 offset-md-3">
-            <div class="card shadow p-4">
-                <h2>Add New Student</h2>
-                <form action="/add_student" method="POST" class="mt-3">
-                    <div class="mb-3"><label class="form-label">Name</label><input type="text" name="name" class="form-control" required></div>
-                    <div class="mb-3"><label class="form-label">Grade</label><input type="number" name="grade" class="form-control" required></div>
-                    <div class="mb-3"><label class="form-label">Section</label><input type="text" name="section" class="form-control" required></div>
-                    <button type="submit" class="btn btn-success w-100">Add Student</button>
-                    <a href="/students" class="btn btn-link w-100 mt-2">Cancel</a>
-                </form>
-            </div>
-        </div>
-    </body>
-    </html>
-    """
-    return render_template_string(html)
-
-@app.route('/add_student', methods=['POST'])
-def add_student():
-    name = request.form.get("name")
-    grade = int(request.form.get("grade"))
-    section = request.form.get("section")
-    new_id = max([s["id"] for s in students], default=0) + 1
-    students.append({"id": new_id, "name": name, "grade": grade, "section": section})
-    return redirect(url_for('list_students'))
-
-@app.route('/edit_student/<int:id>', methods=['GET', 'POST'])
-def edit_student(id):
-    student = next((s for s in students if s["id"] == id), None)
-    if not student: return "Not found", 404
-    if request.method == 'POST':
-        student.update({"name": request.form["name"], "grade": int(request.form["grade"]), "section": request.form["section"]})
-        return redirect(url_for('list_students'))
-    
-    html = """
-    <head><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"></head>
-    <body class="container mt-5">
-        <form method="POST" class="card p-4 col-md-6 offset-md-3 shadow">
-            <h2>Edit Student</h2>
-            <div class="mb-2"><label>Name</label><input type="text" name="name" value="{{student.name}}" class="form-control"></div>
-            <div class="mb-2"><label>Grade</label><input type="number" name="grade" value="{{student.grade}}" class="form-control"></div>
-            <div class="mb-2"><label>Section</label><input type="text" name="section" value="{{student.section}}" class="form-control"></div>
-            <button type="submit" class="btn btn-primary mt-2">Update</button>
-            <a href="/students" class="btn btn-link mt-2">Back</a>
-        </form>
-    </body>
-    """
-    return render_template_string(html, student=student)
-
-@app.route('/delete_student/<int:id>', methods=['POST'])
-def delete_student(id):
-    global students
-    students = [s for s in students if s["id"] != id]
-    return redirect(url_for('list_students'))
-
-if __name__ == '__main__':
-    app.run(debug=True)
