@@ -4,157 +4,217 @@ app = Flask(__name__)
 
 # Sample in-memory data
 students = [
-    {"id": 1, "name": "Juan", "grade": 85, "section": "Stallman"},
-    {"id": 2, "name": "Maria", "grade": 90, "section": "Stallman"},
-    {"id": 3, "name": "Pedro", "grade": 70, "section": "Zion"},
-    {"id": 4, "name": "Elena", "grade": 95, "section": "Zion"}
+    {"id": 1, "name": "Juan", "grade": 85, "section": "Stallman"},
+    {"id": 2, "name": "Maria", "grade": 90, "section": "Stallman"},
+    {"id": 3, "name": "Pedro", "grade": 70, "section": "Zion"}
 ]
 
-PASSING_GRADE = 75  
+PASSING_GRADE = 75  # threshold for pass/fail
 
 @app.route('/')
 def home():
-    return redirect(url_for('list_students'))
+    return redirect(url_for('list_students'))
 
+# Show all students with analytics and unified table
 @app.route('/students')
 def list_students():
-    total_students = len(students)
-    if total_students == 0:
-        return "No students found. <a href='/add_student_form'>Add one</a>"
+    total_students = len(students)
+    total_passed = sum(1 for s in students if s["grade"] >= PASSING_GRADE)
+    total_failed = total_students - total_passed
 
-    # Basic Counts
-    passed_list = [s for s in students if s["grade"] >= PASSING_GRADE]
-    total_passed = len(passed_list)
-    total_failed = total_students - total_passed
-    
-    # Percentages and Averages
-    percent_passed = (total_passed / total_students * 100)
-    avg_grade = sum(s["grade"] for s in students) / total_students
+    percent_passed = (total_passed / total_students * 100) if total_students else 0
+    percent_failed = (total_failed / total_students * 100) if total_students else 0
 
-    # Performance Tiers
-    top_performers = sum(1 for s in students if s["grade"] >= 90)
-    needs_help = total_failed
+    html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Student Dashboard</title>
+        <link rel="stylesheet"
+              href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    </head>
+    <body class="container mt-4">
+        <h2 class="mb-4">📚 Student Dashboard</h2>
 
-    # Section-based Analytics
-    sections = {}
-    for s in students:
-        sec = s["section"]
-        if sec not in sections:
-            sections[sec] = {"count": 0, "total_grade": 0}
-        sections[sec]["count"] += 1
-        sections[sec]["total_grade"] += s["grade"]
-    
-    for sec in sections:
-        sections[sec]["avg"] = sections[sec]["total_grade"] / sections[sec]["count"]
+        <!-- Analytics Summary -->
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card text-bg-primary mb-3">
+                    <div class="card-body text-center">
+                        <h5 class="card-title">Total Students</h5>
+                        <p class="display-6">{{total_students}}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card text-bg-success mb-3">
+                    <div class="card-body text-center">
+                        <h5 class="card-title">Passed</h5>
+                        <p class="display-6">{{total_passed}}</p>
+                        <small>{{percent_passed|round(1)}}%</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card text-bg-danger mb-3">
+                    <div class="card-body text-center">
+                        <h5 class="card-title">Failed</h5>
+                        <p class="display-6">{{total_failed}}</p>
+                        <small>{{percent_failed|round(1)}}%</small>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-    html = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Student Dashboard Pro</title>
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    </head>
-    <body class="container mt-4">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h2>📊 Student Analytics Dashboard</h2>
-            <a href="/add_student_form" class="btn btn-success">➕ Add New Student</a>
-        </div>
+        <!-- Unified Student Table -->
+        <table class="table table-striped table-hover">
+            <thead class="table-dark">
+                <tr>
+                    <th>ID</th><th>Name</th><th>Grade & Remark</th><th>Section</th><th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for s in students %}
+                {% if s.grade >= PASSING_GRADE %}
+                    <tr class="table-success">
+                        <td>{{s.id}}</td>
+                        <td>{{s.name}}</td>
+                        <td><span class="badge bg-success">{{s.grade}} (Passed)</span></td>
+                        <td><span class="badge bg-info">{{s.section}}</span></td>
+                        <td>
+                            <a href="/edit_student/{{s.id}}" class="btn btn-sm btn-primary">✏️ Edit</a>
+                            <form action="/delete_student/{{s.id}}" method="POST" style="display:inline;">
+                                <button type="submit" class="btn btn-sm btn-danger">🗑️ Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr class="table-danger">
+                        <td>{{s.id}}</td>
+                        <td>{{s.name}}</td>
+                        <td><span class="badge bg-danger">{{s.grade}} (Failed)</span></td>
+                        <td><span class="badge bg-info">{{s.section}}</span></td>
+                        <td>
+                            <a href="/edit_student/{{s.id}}" class="btn btn-sm btn-primary">✏️ Edit</a>
+                            <form action="/delete_student/{{s.id}}" method="POST" style="display:inline;">
+                                <button type="submit" class="btn btn-sm btn-danger">🗑️ Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% endif %}
+            {% endfor %}
+            </tbody>
+        </table>
 
-        <div class="row mb-4">
-            <div class="col-md-3">
-                <div class="card text-white bg-primary h-100">
-                    <div class="card-body text-center">
-                        <h6>Total Students</h6>
-                        <h2 class="display-6">{{total_students}}</h2>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card text-white bg-info h-100">
-                    <div class="card-body text-center">
-                        <h6>Class Average</h6>
-                        <h2 class="display-6">{{avg_grade|round(1)}}</h2>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card text-white bg-success h-100">
-                    <div class="card-body text-center">
-                        <h6>Passing Rate</h6>
-                        <h2 class="display-6">{{percent_passed|round(1)}}%</h2>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card text-white bg-warning h-100">
-                    <div class="card-body text-center">
-                        <h6>Top Performers (90+)</h6>
-                        <h2 class="display-6">{{top_performers}}</h2>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <a href="/add_student_form" class="btn btn-success mt-3">➕ Add New Student</a>
+    </body>
+    </html>
+    """
+    return render_template_string(
+        html,
+        students=students,
+        total_students=total_students,
+        total_passed=total_passed,
+        total_failed=total_failed,
+        percent_passed=percent_passed,
+        percent_failed=percent_failed,
+        PASSING_GRADE=PASSING_GRADE
+    )
 
-        <div class="row">
-            <div class="col-md-5">
-                <h4>Section Performance</h4>
-                <table class="table table-bordered table-sm mt-3">
-                    <thead class="table-light">
-                        <tr>
-                            <th>Section</th>
-                            <th>Students</th>
-                            <th>Avg Grade</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for sec_name, data in sections.items() %}
-                        <tr>
-                            <td>{{sec_name}}</td>
-                            <td>{{data.count}}</td>
-                            <td><strong>{{data.avg|round(1)}}</strong></td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
+# Add student form
+@app.route('/add_student_form')
+def add_student_form():
+    html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Add Student</title>
+        <link rel="stylesheet"
+              href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    </head>
+    <body class="container mt-4">
+        <h2>Add New Student</h2>
+        <form action="/add_student" method="POST" class="mt-3">
+            <div class="mb-3">
+                <label class="form-label">Name</label>
+                <input type="text" name="name" class="form-control" autofocus>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Grade</label>
+                <input type="number" name="grade" class="form-control">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Section</label>
+                <input type="text" name="section" class="form-control">
+            </div>
+            <button type="submit" class="btn btn-success">Add Student</button>
+            <a href="/students" class="btn btn-secondary">Back</a>
+        </form>
+    </body>
+    </html>
+    """
+    return render_template_string(html)
 
-            <div class="col-md-7">
-                <h4>Student List</h4>
-                <table class="table table-hover mt-3">
-                    <thead class="table-dark">
-                        <tr>
-                            <th>Name</th><th>Grade</th><th>Section</th><th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    {% for s in students %}
-                        <tr class="{{ 'table-success' if s.grade >= PASSING_GRADE else 'table-danger' }}">
-                            <td>{{s.name}}</td>
-                            <td>{{s.grade}}</td>
-                            <td>{{s.section}}</td>
-                            <td>
-                                <a href="/edit_student/{{s.id}}" class="btn btn-sm btn-outline-dark">✏️</a>
-                                <form action="/delete_student/{{s.id}}" method="POST" style="display:inline;">
-                                    <button type="submit" class="btn btn-sm btn-outline-danger">🗑️</button>
-                                </form>
-                            </td>
-                        </tr>
-                    {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </body>
-    </html>
-    """
-    return render_template_string(
-        html, 
-        students=students, 
-        total_students=total_students,
-        total_passed=total_passed,
-        percent_passed=percent_passed,
-        avg_grade=avg_grade,
-        top_performers=top_performers,
-        sections=sections,
-        PASSING_GRADE=PASSING_GRADE
-    )
+# Add student (POST)
+@app.route('/add_student', methods=['POST'])
+def add_student():
+    name = request.form.get("name")
+    grade = int(request.form.get("grade"))
+    section = request.form.get("section")
+    new_id = max([s["id"] for s in students], default=0) + 1
+    new_student = {"id": new_id, "name": name, "grade": grade, "section": section}
+    students.append(new_student)
+    return redirect(url_for('list_students'))
+
+# Edit student
+@app.route('/edit_student/<int:id>', methods=['GET', 'POST'])
+def edit_student(id):
+    student = next((s for s in students if s["id"] == id), None)
+    if not student:
+        return "Student not found", 404
+    if request.method == 'POST':
+        student["name"] = request.form["name"]
+        student["grade"] = int(request.form["grade"])
+        student["section"] = request.form["section"]
+        return redirect(url_for('list_students'))
+    html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Edit Student</title>
+        <link rel="stylesheet"
+              href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    </head>
+    <body class="container mt-4">
+        <h2>Edit Student</h2>
+        <form method="POST" class="mt-3">
+            <div class="mb-3">
+                <label class="form-label">Name</label>
+                <input type="text" name="name" value="{{student.name}}" class="form-control">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Grade</label>
+                <input type="number" name="grade" value="{{student.grade}}" class="form-control">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Section</label>
+                <input type="text" name="section" value="{{student.section}}" class="form-control">
+            </div>
+            <button type="submit" class="btn btn-primary">Update</button>
+            <a href="/students" class="btn btn-secondary">Back</a>
+        </form>
+    </body>
+    </html>
+    """
+    return render_template_string(html, student=student)
+
+# Delete student
+@app.route('/delete_student/<int:id>', methods=['POST'])
+def delete_student(id):
+    global students
+    students = [s for s in students if s["id"] != id]
+    return redirect(url_for('list_students'))
+
+if __name__ == '__main__':
+    app.run(debug=True)
+add analytics for this code
