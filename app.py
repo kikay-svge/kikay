@@ -128,9 +128,9 @@ def list_students():
                             <td>{{s.grade}}</td>
                             <td>{{s.section}}</td>
                             <td>
-                                <a href="/edit_student/{{s.id}}" class="btn btn-sm btn-outline-dark">✏️</a>
+                                <a href="/edit_student/{{s.id}}" class="btn btn-sm btn-outline-dark"></a>
                                 <form action="/delete_student/{{s.id}}" method="POST" style="display:inline;">
-                                    <button type="submit" class="btn btn-sm btn-outline-danger">🗑️</button>
+                                    <button type="submit" class="btn btn-sm btn-outline-danger"></button>
                                 </form>
                             </td>
                         </tr>
