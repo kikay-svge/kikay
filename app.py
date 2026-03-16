@@ -1,15 +1,25 @@
-from flask import Flask, request, render_template_string, redirect, url_for
+from flask import Flask, request, render_template_string, redirect, url_for, Response
+import io
+import csv
 
 app = Flask(__name__)
 
 # Sample in-memory data
 students = [
     {"id": 1, "name": "Juan", "grade": 85, "section": "Stallman"},
-    {"id": 2, "name": "Maria", "grade": 90, "section": "Stallman"},
-    {"id": 3, "name": "Pedro", "grade": 70, "section": "Zion"}
+    {"id": 2, "name": "Maria", "grade": 94, "section": "Stallman"},
+    {"id": 3, "name": "Pedro", "grade": 70, "section": "Zion"},
+    {"id": 4, "name": "Ana", "grade": 88, "section": "Turing"},
+    {"id": 5, "name": "Carlos", "grade": 76, "section": "Zion"}
 ]
 
 PASSING_GRADE = 75
+
+def get_letter_grade(grade):
+    if grade >= 90: return "A"
+    elif grade >= 80: return "B"
+    elif grade >= 75: return "C"
+    else: return "F"
 
 @app.route('/')
 def home():
@@ -18,185 +28,298 @@ def home():
 @app.route('/students')
 def list_students():
     total_students = len(students)
+    
+    # Basic Analytics
     total_passed = sum(1 for s in students if s["grade"] >= PASSING_GRADE)
     total_failed = total_students - total_passed
-
     percent_passed = (total_passed / total_students * 100) if total_students else 0
-    percent_failed = (total_failed / total_students * 100) if total_students else 0
+    
+    # Advanced Analytics
+    avg_grade = sum(s["grade"] for s in students) / total_students if total_students else 0
+    highest_grade = max((s["grade"] for s in students), default=0)
+    lowest_grade = min((s["grade"] for s in students), default=0)
+    
+    # Grade Distribution for Chart
+    grade_dist = {"A": 0, "B": 0, "C": 0, "F": 0}
+    for s in students:
+        grade_dist[get_letter_grade(s["grade"])] += 1
+    
+    # Section Analytics
+    section_grades = {}
+    for s in students:
+        section_grades.setdefault(s["section"], []).append(s["grade"])
+    
+    section_stats = []
+    best_section = "N/A"
+    if section_grades:
+        for sec, grades in section_grades.items():
+            section_stats.append({
+                "name": sec,
+                "avg": sum(grades) / len(grades),
+                "highest": max(grades),
+                "lowest": min(grades),
+                "count": len(grades)
+            })
+        # Sort sections by average grade descending
+        section_stats.sort(key=lambda x: x["avg"], reverse=True)
+        best_section = section_stats[0]["name"]
 
     html = """
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Student Dashboard</title>
+        <title>Student Dashboard Pro</title>
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <style>
+            th.sortable:hover { cursor: pointer; background-color: #f8f9fa; }
+        </style>
     </head>
-    <body class="container mt-4">
-        <h2 class="mb-4">📚 Student Dashboard</h2>
+    <body class="container mt-4 bg-light">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>📚 Student Dashboard Pro</h2>
+            <div>
+                <a href="/export_csv" class="btn btn-outline-secondary shadow-sm me-2">📥 Export CSV</a>
+                <a href="/add_student_form" class="btn btn-success shadow-sm">➕ Add New Student</a>
+            </div>
+        </div>
 
         <div class="row mb-4">
-            <div class="col-md-4">
-                <div class="card text-bg-primary mb-3 text-center">
-                    <div class="card-body">
-                        <h5>Total Students</h5>
-                        <p class="display-6">{{total_students}}</p>
+            <div class="col-md-3">
+                <div class="card text-bg-primary shadow-sm h-100 text-center">
+                    <div class="card-body d-flex flex-column justify-content-center">
+                        <h6 class="card-title text-uppercase opacity-75">Total Students</h6>
+                        <h2 class="display-6 mb-0">{{total_students}}</h2>
                     </div>
                 </div>
             </div>
-            <div class="col-md-4">
-                <div class="card text-bg-success mb-3 text-center">
-                    <div class="card-body">
-                        <h5>Passed</h5>
-                        <p class="display-6">{{total_passed}}</p>
-                        <small>{{percent_passed|round(1)}}%</small>
+            <div class="col-md-3">
+                <div class="card text-bg-info text-white shadow-sm h-100 text-center">
+                    <div class="card-body d-flex flex-column justify-content-center">
+                        <h6 class="card-title text-uppercase opacity-75">Class Average</h6>
+                        <h2 class="display-6 mb-0">{{avg_grade|round(1)}}</h2>
                     </div>
                 </div>
             </div>
-            <div class="col-md-4">
-                <div class="card text-bg-danger mb-3 text-center">
-                    <div class="card-body">
-                        <h5>Failed</h5>
-                        <p class="display-6">{{total_failed}}</p>
-                        <small>{{percent_failed|round(1)}}%</small>
+            <div class="col-md-3">
+                <div class="card text-bg-warning text-white shadow-sm h-100 text-center">
+                    <div class="card-body d-flex flex-column justify-content-center">
+                        <h6 class="card-title text-uppercase opacity-75">Highest & Lowest</h6>
+                        <h3 class="mb-0">▲ {{highest_grade}} | ▼ {{lowest_grade}}</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-bg-dark shadow-sm h-100 text-center">
+                    <div class="card-body d-flex flex-column justify-content-center">
+                        <h6 class="card-title text-uppercase opacity-75">Top Section</h6>
+                        <h3 class="mb-0 text-truncate" title="{{best_section}}">🏆 {{best_section}}</h3>
                     </div>
                 </div>
             </div>
         </div>
 
-        <table class="table table-hover border">
-            <thead class="table-dark">
-                <tr>
-                    <th>ID</th><th>Name</th><th>Grade & Remark</th><th>Section</th><th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-            {% for s in students %}
-                <tr class="{{ 'table-success' if s.grade >= PASSING_GRADE else 'table-danger' }}">
-                    <td>{{s.id}}</td>
-                    <td>{{s.name}}</td>
-                    <td>
-                        <span class="badge {{ 'bg-success' if s.grade >= PASSING_GRADE else 'bg-danger' }}">
-                            {{s.grade}} ({{ 'Passed' if s.grade >= PASSING_GRADE else 'Failed' }})
-                        </span>
-                    </td>
-                    <td><span class="badge bg-info text-dark">{{s.section}}</span></td>
-                    <td>
-                        <div class="d-flex gap-2">
-                            <a href="/edit_student/{{s.id}}" class="btn btn-sm btn-outline-primary">✏️ Edit</a>
-                            <form action="/delete_student/{{s.id}}" method="POST" onsubmit="return confirm('Delete this student?')">
-                                <button type="submit" class="btn btn-sm btn-outline-danger">🗑️ Delete</button>
-                            </form>
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body">
+                        <h6 class="text-muted mb-3 text-center">Grade Distribution</h6>
+                        <canvas id="gradeChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-8">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body">
+                        <h6 class="text-muted mb-3">Section Performance Breakdown</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered text-center align-middle">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Section</th>
+                                        <th>Students</th>
+                                        <th>Average</th>
+                                        <th>Highest</th>
+                                        <th>Lowest</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                {% for stat in section_stats %}
+                                    <tr>
+                                        <td class="fw-bold">{{stat.name}}</td>
+                                        <td>{{stat.count}}</td>
+                                        <td class="{{ 'text-success fw-bold' if loop.first else '' }}">{{stat.avg|round(1)}}</td>
+                                        <td>{{stat.highest}}</td>
+                                        <td>{{stat.lowest}}</td>
+                                    </tr>
+                                {% else %}
+                                    <tr><td colspan="5" class="text-muted">No data available</td></tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
                         </div>
-                    </td>
-                </tr>
-            {% endfor %}
-            </tbody>
-        </table>
-        <a href="/add_student_form" class="btn btn-success mt-3">➕ Add New Student</a>
+                        
+                        <h6 class="text-muted mt-4 mb-2">Class Pass Rate Overview</h6>
+                        <div class="progress" style="height: 25px;">
+                            <div class="progress-bar bg-success" style="width: {{percent_passed}}%">
+                                {{percent_passed|round(1)}}% Passed
+                            </div>
+                            <div class="progress-bar bg-danger" style="width: {{100 - percent_passed}}%">
+                                {{(100 - percent_passed)|round(1)}}% Failed
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-5">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+                <h5 class="mb-0">Student Roster</h5>
+                <input type="text" id="searchInput" class="form-control w-25" placeholder="🔍 Search...">
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle" id="rosterTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th>ID</th>
+                            <th class="sortable" onclick="sortTable(1)">Name ↕️</th>
+                            <th class="sortable" onclick="sortTable(2)">Grade ↕️</th>
+                            <th>Letter</th>
+                            <th class="sortable" onclick="sortTable(4)">Section ↕️</th>
+                            <th class="text-end pe-4">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="studentTable">
+                    {% for s in students %}
+                        <tr>
+                            <td class="text-muted fw-bold">#{{s.id}}</td>
+                            <td class="fw-semibold">{{s.name}}</td>
+                            <td>
+                                <span class="badge rounded-pill {{ 'bg-success' if s.grade >= PASSING_GRADE else 'bg-danger' }} px-3 py-2">
+                                    {{s.grade}}
+                                </span>
+                            </td>
+                            <td><span class="badge bg-secondary">{{ get_letter_grade(s.grade) }}</span></td>
+                            <td><span class="badge border border-info text-info bg-light">{{s.section}}</span></td>
+                            <td class="text-end pe-3">
+                                <a href="/edit_student/{{s.id}}" class="btn btn-sm btn-outline-primary">Edit</a>
+                                <form action="/delete_student/{{s.id}}" method="POST" class="d-inline" onsubmit="return confirm('Delete {{s.name}}?')">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="6" class="text-center py-4 text-muted">No students found. Add one above!</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <script>
+            // Search Filtering
+            document.getElementById('searchInput').addEventListener('keyup', function() {
+                let filter = this.value.toLowerCase();
+                let rows = document.querySelectorAll('#studentTable tr');
+                
+                rows.forEach(row => {
+                    let text = row.innerText.toLowerCase();
+                    row.style.display = text.includes(filter) ? '' : 'none';
+                });
+            });
+
+            // Table Sorting
+            function sortTable(n) {
+                var table, rows, switching, i, x, y, shouldSwitch, dir, switchcount = 0;
+                table = document.getElementById("rosterTable");
+                switching = true;
+                dir = "asc"; 
+                while (switching) {
+                    switching = false;
+                    rows = table.rows;
+                    for (i = 1; i < (rows.length - 1); i++) {
+                        shouldSwitch = false;
+                        x = rows[i].getElementsByTagName("TD")[n];
+                        y = rows[i + 1].getElementsByTagName("TD")[n];
+                        
+                        // Check if sorting numbers (Grade column) or strings
+                        let valX = n === 2 ? parseInt(x.innerText) : x.innerHTML.toLowerCase();
+                        let valY = n === 2 ? parseInt(y.innerText) : y.innerHTML.toLowerCase();
+
+                        if (dir == "asc") {
+                            if (valX > valY) { shouldSwitch = true; break; }
+                        } else if (dir == "desc") {
+                            if (valX < valY) { shouldSwitch = true; break; }
+                        }
+                    }
+                    if (shouldSwitch) {
+                        rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
+                        switching = true;
+                        switchcount ++;
+                    } else {
+                        if (switchcount == 0 && dir == "asc") {
+                            dir = "desc";
+                            switching = true;
+                        }
+                    }
+                }
+            }
+
+            // Render Chart.js
+            const ctx = document.getElementById('gradeChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['A (90-100)', 'B (80-89)', 'C (75-79)', 'F (<75)'],
+                    datasets: [{
+                        data: [{{grade_dist['A']}}, {{grade_dist['B']}}, {{grade_dist['C']}}, {{grade_dist['F']}}],
+                        backgroundColor: ['#198754', '#0dcaf0', '#ffc107', '#dc3545'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { position: 'bottom' } }
+                }
+            });
+        </script>
     </body>
     </html>
     """
     return render_template_string(html, students=students, total_students=total_students, 
-                                 total_passed=total_passed, total_failed=total_failed, 
-                                 percent_passed=percent_passed, percent_failed=percent_failed, 
-                                 PASSING_GRADE=PASSING_GRADE)
+                                 percent_passed=percent_passed, avg_grade=avg_grade,
+                                 highest_grade=highest_grade, lowest_grade=lowest_grade,
+                                 best_section=best_section, PASSING_GRADE=PASSING_GRADE,
+                                 get_letter_grade=get_letter_grade, grade_dist=grade_dist,
+                                 section_stats=section_stats)
 
-@app.route('/add_student_form')
-def add_student_form():
-    html = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Add Student</title>
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    </head>
-    <body class="container mt-4">
-        <div class="card p-4 shadow-sm">
-            <h2>Add New Student</h2>
-            <form action="/add_student" method="POST" class="mt-3">
-                <div class="mb-3">
-                    <label class="form-label">Name</label>
-                    <input type="text" name="name" class="form-control" required>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Grade</label>
-                    <input type="number" name="grade" class="form-control" min="0" max="100" required>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Section</label>
-                    <input type="text" name="section" class="form-control" required>
-                </div>
-                <button type="submit" class="btn btn-success">Add Student</button>
-                <a href="/students" class="btn btn-secondary">Cancel</a>
-            </form>
-        </div>
-    </body>
-    </html>
-    """
-    return render_template_string(html)
-
-@app.route('/add_student', methods=['POST'])
-def add_student():
-    # ID logic: get max ID or 0 if list is empty, then add 1
-    new_id = max([s["id"] for s in students], default=0) + 1
-    new_student = {
-        "id": new_id,
-        "name": request.form.get("name"),
-        "grade": int(request.form.get("grade", 0)),
-        "section": request.form.get("section")
-    }
-    students.append(new_student)
-    return redirect(url_for('list_students'))
-
-@app.route('/edit_student/<int:id>', methods=['GET', 'POST'])
-def edit_student(id):
-    student = next((s for s in students if s["id"] == id), None)
-    if not student:
-        return "Student not found", 404
+@app.route('/export_csv')
+def export_csv():
+    # Create an in-memory text stream
+    si = io.StringIO()
+    cw = csv.writer(si)
+    # Write Headers
+    cw.writerow(['ID', 'Name', 'Grade', 'Letter Grade', 'Section'])
+    # Write Data
+    for s in students:
+        cw.writerow([s['id'], s['name'], s['grade'], get_letter_grade(s['grade']), s['section']])
     
-    if request.method == 'POST':
-        student["name"] = request.form["name"]
-        student["grade"] = int(request.form["grade"])
-        student["section"] = request.form["section"]
-        return redirect(url_for('list_students'))
+    output = si.getvalue()
+    return Response(
+        output,
+        mimetype="text/csv",
+        headers={"Content-disposition": "attachment; filename=student_roster.csv"}
+    )
 
-    html = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Edit Student</title>
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    </head>
-    <body class="container mt-4">
-        <div class="card p-4 shadow-sm">
-            <h2>Edit Student: {{student.name}}</h2>
-            <form method="POST" class="mt-3">
-                <div class="mb-3">
-                    <label class="form-label">Name</label>
-                    <input type="text" name="name" value="{{student.name}}" class="form-control" required>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Grade</label>
-                    <input type="number" name="grade" value="{{student.grade}}" class="form-control" min="0" max="100" required>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Section</label>
-                    <input type="text" name="section" value="{{student.section}}" class="form-control" required>
-                </div>
-                <button type="submit" class="btn btn-primary">Update Changes</button>
-                <a href="/students" class="btn btn-secondary">Back</a>
-            </form>
-        </div>
-    </body>
-    </html>
-    """
-    return render_template_string(html, student=student)
-
-@app.route('/delete_student/<int:id>', methods=['POST'])
-def delete_student(id):
-    global students
-    students = [s for s in students if s["id"] != id]
-    return redirect(url_for('list_students'))
+# --- KEEP YOUR EXISTING ROUTES BELOW THIS LINE ---
+# @app.route('/add_student_form')
+# @app.route('/add_student', methods=['POST'])
+# @app.route('/edit_student/<int:id>', methods=['GET', 'POST'])
+# @app.route('/delete_student/<int:id>', methods=['POST'])
 
 if __name__ == '__main__':
     app.run(debug=True)
