@@ -1,16 +1,3 @@
-from flask import Flask, request, render_template_string, redirect, url_for
-
-app = Flask(__name__)
-
-# Sample in-memory data
-students = [
-    {"id": 1, "name": "Juan", "grade": 85, "section": "Stallman"},
-    {"id": 2, "name": "Maria", "grade": 90, "section": "Stallman"},
-    {"id": 3, "name": "Pedro", "grade": 70, "section": "Zion"}
-]
-
-PASSING_GRADE = 75  # threshold for pass/fail
-
 @app.route('/students')
 def list_students():
     total_students = len(students)
@@ -128,9 +115,9 @@ def list_students():
                             <td>{{s.grade}}</td>
                             <td>{{s.section}}</td>
                             <td>
-                                <a href="/edit_student/{{s.id}}" class="btn btn-sm btn-outline-dark"></a>
+                                <a href="/edit_student/{{s.id}}" class="btn btn-sm btn-outline-dark">✏️</a>
                                 <form action="/delete_student/{{s.id}}" method="POST" style="display:inline;">
-                                    <button type="submit" class="btn btn-sm btn-outline-danger"></button>
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">🗑️</button>
                                 </form>
                             </td>
                         </tr>
