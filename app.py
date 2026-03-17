@@ -1,18 +1,34 @@
-from flask import Flask, request, render_template_string, redirect, url_for, Response
+import os
 import io
 import csv
+from flask import Flask, request, render_template_string, redirect, url_for, Response
+from flask_sqlalchemy import SQLAlchemy
 
 app = Flask(__name__)
 
-# Sample in-memory data
-students = [
-    {"id": 1, "name": "Juan", "grade": 85, "section": "Stallman"},
-    {"id": 2, "name": "Maria", "grade": 94, "section": "Stallman"},
-    {"id": 3, "name": "Pedro", "grade": 70, "section": "Zion"},
-    {"id": 4, "name": "Ana", "grade": 88, "section": "Turing"},
-    {"id": 5, "name": "Carlos", "grade": 76, "section": "Zion"}
-]
+# --- Database Configuration ---
+# Ensure these environment variables are set in your terminal/environment before running
+app.config['SQLALCHEMY_DATABASE_URI'] = (
+    f"postgresql://{os.environ.get('DB_USER')}:{os.environ.get('DB_PASSWORD')}"
+    f"@{os.environ.get('DB_HOST')}:{os.environ.get('DB_PORT')}/{os.environ.get('DB_NAME')}"
+)
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+db = SQLAlchemy(app)
+
+# --- Database Model ---
+class Student(db.Model):
+    __tablename__ = 'students'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    grade = db.Column(db.Integer, nullable=False)
+    section = db.Column(db.String(100), nullable=False)
+
+# Create the tables in the database if they don't exist yet
+with app.app_context():
+    db.create_all()
+
+# --- Helper Logic ---
 PASSING_GRADE = 75
 
 def get_letter_grade(grade):
@@ -21,33 +37,37 @@ def get_letter_grade(grade):
     elif grade >= 75: return "C"
     else: return "F"
 
+# --- Routes ---
+
 @app.route('/')
 def home():
     return redirect(url_for('list_students'))
 
 @app.route('/students')
 def list_students():
+    # Query all students from the database
+    students = Student.query.all()
     total_students = len(students)
     
-    # Basic Analytics
-    total_passed = sum(1 for s in students if s["grade"] >= PASSING_GRADE)
+    # Basic Analytics (Updated to use object attributes: s.grade instead of s["grade"])
+    total_passed = sum(1 for s in students if s.grade >= PASSING_GRADE)
     total_failed = total_students - total_passed
     percent_passed = (total_passed / total_students * 100) if total_students else 0
     
     # Advanced Analytics
-    avg_grade = sum(s["grade"] for s in students) / total_students if total_students else 0
-    highest_grade = max((s["grade"] for s in students), default=0)
-    lowest_grade = min((s["grade"] for s in students), default=0)
+    avg_grade = sum(s.grade for s in students) / total_students if total_students else 0
+    highest_grade = max((s.grade for s in students), default=0)
+    lowest_grade = min((s.grade for s in students), default=0)
     
     # Grade Distribution for Chart
     grade_dist = {"A": 0, "B": 0, "C": 0, "F": 0}
     for s in students:
-        grade_dist[get_letter_grade(s["grade"])] += 1
+        grade_dist[get_letter_grade(s.grade)] += 1
     
     # Section Analytics
     section_grades = {}
     for s in students:
-        section_grades.setdefault(s["section"], []).append(s["grade"])
+        section_grades.setdefault(s.section, []).append(s.grade)
     
     section_stats = []
     best_section = "N/A"
@@ -60,10 +80,10 @@ def list_students():
                 "lowest": min(grades),
                 "count": len(grades)
             })
-        # Sort sections by average grade descending
         section_stats.sort(key=lambda x: x["avg"], reverse=True)
         best_section = section_stats[0]["name"]
 
+    # HTML Template (Unchanged)
     html = """
     <!DOCTYPE html>
     <html>
@@ -221,18 +241,15 @@ def list_students():
         </div>
 
         <script>
-            // Search Filtering
             document.getElementById('searchInput').addEventListener('keyup', function() {
                 let filter = this.value.toLowerCase();
                 let rows = document.querySelectorAll('#studentTable tr');
-                
                 rows.forEach(row => {
                     let text = row.innerText.toLowerCase();
                     row.style.display = text.includes(filter) ? '' : 'none';
                 });
             });
 
-            // Table Sorting
             function sortTable(n) {
                 var table, rows, switching, i, x, y, shouldSwitch, dir, switchcount = 0;
                 table = document.getElementById("rosterTable");
@@ -268,7 +285,6 @@ def list_students():
                 }
             }
 
-            // Render Chart.js
             const ctx = document.getElementById('gradeChart').getContext('2d');
             new Chart(ctx, {
                 type: 'doughnut',
@@ -298,11 +314,14 @@ def list_students():
 
 @app.route('/export_csv')
 def export_csv():
+    students = Student.query.all()
     si = io.StringIO()
     cw = csv.writer(si)
     cw.writerow(['ID', 'Name', 'Grade', 'Letter Grade', 'Section'])
+    
+    # Updated to object attribute access
     for s in students:
-        cw.writerow([s['id'], s['name'], s['grade'], get_letter_grade(s['grade']), s['section']])
+        cw.writerow([s.id, s.name, s.grade, get_letter_grade(s.grade), s.section])
     
     output = si.getvalue()
     return Response(
@@ -310,8 +329,6 @@ def export_csv():
         mimetype="text/csv",
         headers={"Content-disposition": "attachment; filename=student_roster.csv"}
     )
-
-# --- NEW ROUTES ADDED BELOW ---
 
 @app.route('/add_student_form')
 def add_student_form():
@@ -359,34 +376,30 @@ def add_student_form():
 
 @app.route('/add_student', methods=['POST'])
 def add_student():
+    # Capture form data
     name = request.form.get('name')
     grade = int(request.form.get('grade', 0))
     section = request.form.get('section')
     
-    # Generate a new unique ID based on the current highest ID
-    new_id = max((s["id"] for s in students), default=0) + 1
-    
-    # Add the new student to our list
-    students.append({
-        "id": new_id,
-        "name": name,
-        "grade": grade,
-        "section": section
-    })
+    # Create new database record
+    new_student = Student(name=name, grade=grade, section=section)
+    db.session.add(new_student)
+    db.session.commit()
     
     return redirect(url_for('list_students'))
 
 @app.route('/edit_student/<int:id>', methods=['GET', 'POST'])
 def edit_student(id):
-    student = next((s for s in students if s["id"] == id), None)
-    
-    if not student:
-        return "Student not found!", 404
+    # Fetch student or throw 404 if not found
+    student = Student.query.get_or_404(id)
 
     if request.method == 'POST':
-        student['name'] = request.form.get('name')
-        student['grade'] = int(request.form.get('grade', 0))
-        student['section'] = request.form.get('section')
+        # Update record in database
+        student.name = request.form.get('name')
+        student.grade = int(request.form.get('grade', 0))
+        student.section = request.form.get('section')
+        db.session.commit()
+        
         return redirect(url_for('list_students'))
 
     html = """
@@ -433,9 +446,10 @@ def edit_student(id):
 
 @app.route('/delete_student/<int:id>', methods=['POST'])
 def delete_student(id):
-    global students
-    # Rebuild the list excluding the student with the matching ID
-    students = [s for s in students if s["id"] != id]
+    student = Student.query.get_or_404(id)
+    db.session.delete(student)
+    db.session.commit()
+    
     return redirect(url_for('list_students'))
 
 if __name__ == '__main__':
