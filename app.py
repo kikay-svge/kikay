@@ -8,6 +8,7 @@ import psycopg2.extras
 from database import get_db_connection, init_db
 
 app = Flask(__name__)
+init_db()
 
 # --- Helper Logic ---
 PASSING_GRADE = 75
