@@ -1,33 +1,12 @@
-
 import os
 import io
 import csv
 from flask import Flask, request, render_template_string, redirect, url_for, Response
-from flask_sqlalchemy import SQLAlchemy
+import psycopg2
+import psycopg2.extras
+from database import get_db_connection
 
 app = Flask(__name__)
-
-# --- Database Configuration ---
-# Ensure these environment variables are set in your terminal/environment before running
-app.config['SQLALCHEMY_DATABASE_URI'] = (
-    f"postgresql://{os.environ.get('DB_USER')}:{os.environ.get('DB_PASSWORD')}"
-    f"@{os.environ.get('DB_HOST')}:{os.environ.get('DB_PORT')}/{os.environ.get('DB_NAME')}"
-)
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-db = SQLAlchemy(app)
-
-# --- Database Model ---
-class Student(db.Model):
-    __tablename__ = 'students'
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    grade = db.Column(db.Integer, nullable=False)
-    section = db.Column(db.String(100), nullable=False)
-
-# Create the tables in the database if they don't exist yet
-with app.app_context():
-    db.create_all()
 
 # --- Helper Logic ---
 PASSING_GRADE = 75
@@ -46,29 +25,42 @@ def home():
 
 @app.route('/students')
 def list_students():
-    # Query all students from the database
-    students = Student.query.all()
+    # 1. Open Database Connection
+    conn = get_db_connection()
+    if not conn:
+        return "Database connection error. Please check your Render URL.", 500
+    
+    # Use RealDictCursor so rows act like Python dictionaries (perfect for our HTML template)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    
+    # 2. Query all students using RAW SQL
+    cursor.execute("SELECT * FROM students ORDER BY id ASC")
+    students = cursor.fetchall()
+    
+    cursor.close()
+    conn.close()
+
     total_students = len(students)
     
-    # Basic Analytics
-    total_passed = sum(1 for s in students if s.grade >= PASSING_GRADE)
+    # Basic Analytics (Switched back to dictionary syntax: s['grade'])
+    total_passed = sum(1 for s in students if s['grade'] >= PASSING_GRADE)
     total_failed = total_students - total_passed
     percent_passed = (total_passed / total_students * 100) if total_students else 0
     
     # Advanced Analytics
-    avg_grade = sum(s.grade for s in students) / total_students if total_students else 0
-    highest_grade = max((s.grade for s in students), default=0)
-    lowest_grade = min((s.grade for s in students), default=0)
+    avg_grade = sum(s['grade'] for s in students) / total_students if total_students else 0
+    highest_grade = max((s['grade'] for s in students), default=0)
+    lowest_grade = min((s['grade'] for s in students), default=0)
     
     # Grade Distribution for Chart
     grade_dist = {"A": 0, "B": 0, "C": 0, "F": 0}
     for s in students:
-        grade_dist[get_letter_grade(s.grade)] += 1
+        grade_dist[get_letter_grade(s['grade'])] += 1
     
     # Section Analytics
     section_grades = {}
     for s in students:
-        section_grades.setdefault(s.section, []).append(s.grade)
+        section_grades.setdefault(s['section'], []).append(s['grade'])
     
     section_stats = []
     best_section = "N/A"
@@ -315,13 +307,19 @@ def list_students():
 
 @app.route('/export_csv')
 def export_csv():
-    students = Student.query.all()
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cursor.execute("SELECT * FROM students ORDER BY id ASC")
+    students = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
     si = io.StringIO()
     cw = csv.writer(si)
     cw.writerow(['ID', 'Name', 'Grade', 'Letter Grade', 'Section'])
     
     for s in students:
-        cw.writerow([s.id, s.name, s.grade, get_letter_grade(s.grade), s.section])
+        cw.writerow([s['id'], s['name'], s['grade'], get_letter_grade(s['grade']), s['section']])
     
     output = si.getvalue()
     return Response(
@@ -380,23 +378,42 @@ def add_student():
     grade = int(request.form.get('grade', 0))
     section = request.form.get('section')
     
-    new_student = Student(name=name, grade=grade, section=section)
-    db.session.add(new_student)
-    db.session.commit()
+    # RAW SQL INSERT
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO students (name, grade, section) VALUES (%s, %s, %s)", (name, grade, section))
+    conn.commit()
+    cursor.close()
+    conn.close()
     
     return redirect(url_for('list_students'))
 
 @app.route('/edit_student/<int:id>', methods=['GET', 'POST'])
 def edit_student(id):
-    student = Student.query.get_or_404(id)
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     if request.method == 'POST':
-        student.name = request.form.get('name')
-        student.grade = int(request.form.get('grade', 0))
-        student.section = request.form.get('section')
-        db.session.commit()
+        name = request.form.get('name')
+        grade = int(request.form.get('grade', 0))
+        section = request.form.get('section')
+        
+        # RAW SQL UPDATE
+        cursor.execute("UPDATE students SET name = %s, grade = %s, section = %s WHERE id = %s", (name, grade, section, id))
+        conn.commit()
+        cursor.close()
+        conn.close()
         
         return redirect(url_for('list_students'))
+
+    # RAW SQL SELECT (GET Request)
+    cursor.execute("SELECT * FROM students WHERE id = %s", (id,))
+    student = cursor.fetchone()
+    cursor.close()
+    conn.close()
+
+    if not student:
+        return "Student not found", 404
 
     html = """
     <!DOCTYPE html>
@@ -442,9 +459,13 @@ def edit_student(id):
 
 @app.route('/delete_student/<int:id>', methods=['POST'])
 def delete_student(id):
-    student = Student.query.get_or_404(id)
-    db.session.delete(student)
-    db.session.commit()
+    # RAW SQL DELETE
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM students WHERE id = %s", (id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
     
     return redirect(url_for('list_students'))
 
