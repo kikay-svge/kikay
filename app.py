@@ -1,7 +1,7 @@
 import os
 import io
 import csv
-from flask import Flask, request, render_template_string, redirect, url_for, Response
+from flask import Flask, request, render_template_string, redirect, url_for, Response, jsonify
 import psycopg2
 import psycopg2.extras
 # Added init_db to the imports here!
@@ -457,6 +457,22 @@ def delete_student(id):
     conn.close()
     
     return redirect(url_for('list_students'))
+
+@app.route('/secret_db_view')
+def secret_db_view():
+    conn = get_db_connection()
+    if not conn:
+        return "Cannot connect to database", 500
+        
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cursor.execute("SELECT * FROM students ORDER BY id ASC")
+    students = cursor.fetchall()
+    
+    cursor.close()
+    conn.close()
+    
+    # This spits the raw database data directly onto the screen as text
+    return jsonify(students)
 
 if __name__ == '__main__':
     # THIS is the crucial step added to make sure the table exists before starting
