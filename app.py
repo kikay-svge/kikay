@@ -246,7 +246,6 @@ def list_students():
                         x = rows[i].getElementsByTagName("TD")[n];
                         y = rows[i + 1].getElementsByTagName("TD")[n];
                         
-                        // Check if sorting numbers (Grade column) or strings
                         let valX = n === 2 ? parseInt(x.innerText) : x.innerHTML.toLowerCase();
                         let valY = n === 2 ? parseInt(y.innerText) : y.innerHTML.toLowerCase();
 
@@ -299,12 +298,9 @@ def list_students():
 
 @app.route('/export_csv')
 def export_csv():
-    # Create an in-memory text stream
     si = io.StringIO()
     cw = csv.writer(si)
-    # Write Headers
     cw.writerow(['ID', 'Name', 'Grade', 'Letter Grade', 'Section'])
-    # Write Data
     for s in students:
         cw.writerow([s['id'], s['name'], s['grade'], get_letter_grade(s['grade']), s['section']])
     
@@ -315,11 +311,132 @@ def export_csv():
         headers={"Content-disposition": "attachment; filename=student_roster.csv"}
     )
 
-# --- KEEP YOUR EXISTING ROUTES BELOW THIS LINE ---
-# @app.route('/add_student_form')
-# @app.route('/add_student', methods=['POST'])
-# @app.route('/edit_student/<int:id>', methods=['GET', 'POST'])
-# @app.route('/delete_student/<int:id>', methods=['POST'])
+# --- NEW ROUTES ADDED BELOW ---
+
+@app.route('/add_student_form')
+def add_student_form():
+    html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Add Student - Dashboard Pro</title>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    </head>
+    <body class="container mt-5 bg-light">
+        <div class="row justify-content-center">
+            <div class="col-md-6">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-white py-3">
+                        <h5 class="mb-0">➕ Add New Student</h5>
+                    </div>
+                    <div class="card-body">
+                        <form action="/add_student" method="POST">
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Name</label>
+                                <input type="text" name="name" class="form-control" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Grade (0-100)</label>
+                                <input type="number" name="grade" class="form-control" min="0" max="100" required>
+                            </div>
+                            <div class="mb-4">
+                                <label class="form-label fw-bold">Section</label>
+                                <input type="text" name="section" class="form-control" required>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <a href="/students" class="btn btn-outline-secondary">Cancel</a>
+                                <button type="submit" class="btn btn-success px-4">Add Student</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return render_template_string(html)
+
+@app.route('/add_student', methods=['POST'])
+def add_student():
+    name = request.form.get('name')
+    grade = int(request.form.get('grade', 0))
+    section = request.form.get('section')
+    
+    # Generate a new unique ID based on the current highest ID
+    new_id = max((s["id"] for s in students), default=0) + 1
+    
+    # Add the new student to our list
+    students.append({
+        "id": new_id,
+        "name": name,
+        "grade": grade,
+        "section": section
+    })
+    
+    return redirect(url_for('list_students'))
+
+@app.route('/edit_student/<int:id>', methods=['GET', 'POST'])
+def edit_student(id):
+    student = next((s for s in students if s["id"] == id), None)
+    
+    if not student:
+        return "Student not found!", 404
+
+    if request.method == 'POST':
+        student['name'] = request.form.get('name')
+        student['grade'] = int(request.form.get('grade', 0))
+        student['section'] = request.form.get('section')
+        return redirect(url_for('list_students'))
+
+    html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Edit Student - Dashboard Pro</title>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    </head>
+    <body class="container mt-5 bg-light">
+        <div class="row justify-content-center">
+            <div class="col-md-6">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-white py-3">
+                        <h5 class="mb-0">✏️ Edit Student: {{ student.name }}</h5>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST">
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Name</label>
+                                <input type="text" name="name" class="form-control" value="{{ student.name }}" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Grade (0-100)</label>
+                                <input type="number" name="grade" class="form-control" value="{{ student.grade }}" min="0" max="100" required>
+                            </div>
+                            <div class="mb-4">
+                                <label class="form-label fw-bold">Section</label>
+                                <input type="text" name="section" class="form-control" value="{{ student.section }}" required>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <a href="/students" class="btn btn-outline-secondary">Cancel</a>
+                                <button type="submit" class="btn btn-primary px-4">Save Changes</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return render_template_string(html, student=student)
+
+@app.route('/delete_student/<int:id>', methods=['POST'])
+def delete_student(id):
+    global students
+    # Rebuild the list excluding the student with the matching ID
+    students = [s for s in students if s["id"] != id]
+    return redirect(url_for('list_students'))
 
 if __name__ == '__main__':
     app.run(debug=True)
