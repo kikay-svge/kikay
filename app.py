@@ -4,7 +4,8 @@ import csv
 from flask import Flask, request, render_template_string, redirect, url_for, Response
 import psycopg2
 import psycopg2.extras
-from database import get_db_connection
+# Added init_db to the imports here!
+from database import get_db_connection, init_db
 
 app = Flask(__name__)
 
@@ -25,15 +26,11 @@ def home():
 
 @app.route('/students')
 def list_students():
-    # 1. Open Database Connection
     conn = get_db_connection()
     if not conn:
         return "Database connection error. Please check your Render URL.", 500
     
-    # Use RealDictCursor so rows act like Python dictionaries (perfect for our HTML template)
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    
-    # 2. Query all students using RAW SQL
     cursor.execute("SELECT * FROM students ORDER BY id ASC")
     students = cursor.fetchall()
     
@@ -42,22 +39,17 @@ def list_students():
 
     total_students = len(students)
     
-    # Basic Analytics (Switched back to dictionary syntax: s['grade'])
     total_passed = sum(1 for s in students if s['grade'] >= PASSING_GRADE)
-    total_failed = total_students - total_passed
     percent_passed = (total_passed / total_students * 100) if total_students else 0
     
-    # Advanced Analytics
     avg_grade = sum(s['grade'] for s in students) / total_students if total_students else 0
     highest_grade = max((s['grade'] for s in students), default=0)
     lowest_grade = min((s['grade'] for s in students), default=0)
     
-    # Grade Distribution for Chart
     grade_dist = {"A": 0, "B": 0, "C": 0, "F": 0}
     for s in students:
         grade_dist[get_letter_grade(s['grade'])] += 1
     
-    # Section Analytics
     section_grades = {}
     for s in students:
         section_grades.setdefault(s['section'], []).append(s['grade'])
@@ -378,7 +370,6 @@ def add_student():
     grade = int(request.form.get('grade', 0))
     section = request.form.get('section')
     
-    # RAW SQL INSERT
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("INSERT INTO students (name, grade, section) VALUES (%s, %s, %s)", (name, grade, section))
@@ -398,7 +389,6 @@ def edit_student(id):
         grade = int(request.form.get('grade', 0))
         section = request.form.get('section')
         
-        # RAW SQL UPDATE
         cursor.execute("UPDATE students SET name = %s, grade = %s, section = %s WHERE id = %s", (name, grade, section, id))
         conn.commit()
         cursor.close()
@@ -406,7 +396,6 @@ def edit_student(id):
         
         return redirect(url_for('list_students'))
 
-    # RAW SQL SELECT (GET Request)
     cursor.execute("SELECT * FROM students WHERE id = %s", (id,))
     student = cursor.fetchone()
     cursor.close()
@@ -459,7 +448,6 @@ def edit_student(id):
 
 @app.route('/delete_student/<int:id>', methods=['POST'])
 def delete_student(id):
-    # RAW SQL DELETE
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM students WHERE id = %s", (id,))
@@ -470,4 +458,6 @@ def delete_student(id):
     return redirect(url_for('list_students'))
 
 if __name__ == '__main__':
+    # THIS is the crucial step added to make sure the table exists before starting
+    init_db() 
     app.run(debug=True)
