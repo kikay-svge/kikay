@@ -11,7 +11,7 @@ def get_db_connection():
     but falls back to your provided connection string for testing.
     """
     # 1. Try to get the URL from Render's environment settings (Best Practice)
-    db_url = os.environ.get("DATABASE_URL")
+    db_url = os.environ.get("DB_URL")
 
     # 2. Fallback to your provided connection string if environment variable isn't set
     if not db_url:
