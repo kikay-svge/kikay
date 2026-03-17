@@ -49,7 +49,7 @@ def list_students():
     students = Student.query.all()
     total_students = len(students)
     
-    # Basic Analytics (Updated to use object attributes: s.grade instead of s["grade"])
+    # Basic Analytics
     total_passed = sum(1 for s in students if s.grade >= PASSING_GRADE)
     total_failed = total_students - total_passed
     percent_passed = (total_passed / total_students * 100) if total_students else 0
@@ -83,7 +83,7 @@ def list_students():
         section_stats.sort(key=lambda x: x["avg"], reverse=True)
         best_section = section_stats[0]["name"]
 
-    # HTML Template (Unchanged)
+    # HTML Template
     html = """
     <!DOCTYPE html>
     <html>
@@ -319,7 +319,6 @@ def export_csv():
     cw = csv.writer(si)
     cw.writerow(['ID', 'Name', 'Grade', 'Letter Grade', 'Section'])
     
-    # Updated to object attribute access
     for s in students:
         cw.writerow([s.id, s.name, s.grade, get_letter_grade(s.grade), s.section])
     
@@ -376,12 +375,10 @@ def add_student_form():
 
 @app.route('/add_student', methods=['POST'])
 def add_student():
-    # Capture form data
     name = request.form.get('name')
     grade = int(request.form.get('grade', 0))
     section = request.form.get('section')
     
-    # Create new database record
     new_student = Student(name=name, grade=grade, section=section)
     db.session.add(new_student)
     db.session.commit()
@@ -390,11 +387,9 @@ def add_student():
 
 @app.route('/edit_student/<int:id>', methods=['GET', 'POST'])
 def edit_student(id):
-    # Fetch student or throw 404 if not found
     student = Student.query.get_or_404(id)
 
     if request.method == 'POST':
-        # Update record in database
         student.name = request.form.get('name')
         student.grade = int(request.form.get('grade', 0))
         student.section = request.form.get('section')
